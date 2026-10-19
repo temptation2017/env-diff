@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>env-diff · 本地对比 .env</title>
+  <meta name="description" content="本地对比两段 .env / 环境变量文本：新增、删除、变更一目了然。纯前端，不上传。" />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #3d9cf0;
+      --add: #3dd68c;
+      --del: #f07178;
+      --chg: #ffcc66;
+      --same: #6b7c93;
+      --radius: 10px;
+      --font: "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+      --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f6f9;
+        --panel: #ffffff;
+        --border: #d5dde8;
+        --text: #1a2332;
+        --muted: #5a6b82;
+        --accent: #1a7fd4;
+        --add: #0d9f6e;
+        --del: #d64550;
+        --chg: #c47d0e;
+        --same: #7a8a9e;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    header {
+      padding: 1.25rem 1.5rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+    header p {
+      margin: 0.35rem 0 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    header code, footer code, .toolbar code {
+      font-family: var(--mono);
+      font-size: 0.86em;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1.25rem 1.5rem 2.5rem;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem 1.25rem;
+      align-items: center;
+      margin-bottom: 1rem;
+      font-size: 0.88rem;
+    }
+    .toolbar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .toolbar input[type="checkbox"] { accent-color: var(--accent); }
+    .btns { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-left: auto; }
+    button {
+      font: inherit;
+      font-size: 0.88rem;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.4rem 0.85rem;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    button.primary:hover { filter: brightness(1.08); color: #fff; }
+    .panes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 760px) {
+      .panes { grid-template-columns: 1fr; }
+      .btns { margin-left: 0; width: 100%; }
+    }
+    .pane {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .pane .label {
+      padding: 0.55rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .pane textarea {
+      width: 100%;
+      min-height: 220px;
+      border: 0;
+      resize: vertical;
+      padding: 0.75rem 0.85rem;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.45;
+      background: transparent;
+      color: var(--text);
+      outline: none;
+    }
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 1.15rem 0 0.75rem;
+    }
+    .chip {
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.28rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+    }
+    .chip.add { color: var(--add); }
+    .chip.del { color: var(--del); }
+    .chip.chg { color: var(--chg); }
+    .chip.same { color: var(--same); }
+    .results {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.55rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      background: color-mix(in srgb, var(--panel) 80%, var(--bg));
+    }
+    tr:last-child td { border-bottom: 0; }
+    td.key { font-family: var(--mono); font-weight: 600; word-break: break-all; }
+    td.val { font-family: var(--mono); word-break: break-all; color: var(--muted); max-width: 280px; }
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.12rem 0.45rem;
+      border-radius: 4px;
+    }
+    .tag.add { background: color-mix(in srgb, var(--add) 18%, transparent); color: var(--add); }
+    .tag.del { background: color-mix(in srgb, var(--del) 18%, transparent); color: var(--del); }
+    .tag.chg { background: color-mix(in srgb, var(--chg) 18%, transparent); color: var(--chg); }
+    .tag.same { background: color-mix(in srgb, var(--same) 15%, transparent); color: var(--same); }
+    .empty {
+      padding: 1.5rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    footer {
+      margin-top: 1.5rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    .toast {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      background: var(--panel);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 0.55rem 0.9rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 20;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>env-diff</h1>
+    <p>本地对比两段 <code>.env</code> / 环境变量文本。纯前端运行，内容不会上传。</p>
+  </header>
+  <main>
+    <div class="toolbar">
+      <label><input type="checkbox" id="optComments" checked /> 忽略注释行</label>
+      <label><input type="checkbox" id="optEmpty" checked /> 忽略空行</label>
+      <label><input type="checkbox" id="optExport" /> 忽略 <code>export </code> 前缀</label>
+      <label><input type="checkbox" id="optCase" /> 键名区分大小写</label>
+      <label><input type="checkbox" id="optHide" /> 隐藏值（仅比键 / 打码）</label>
+      <div class="btns">
+        <button type="button" id="btnSample">填入示例</button>
+        <button type="button" id="btnSwap">左右对调</button>
+        <button type="button" id="btnClear">清空</button>
+        <button type="button" class="primary" id="btnCopy">复制 Markdown 报告</button>
+      </div>
+    </div>
+
+    <div class="panes">
+      <div class="pane">
+        <div class="label"><span>左侧（旧 / 基准）</span><span id="countA">0 键</span></div>
+        <textarea id="left" spellcheck="false" placeholder="# 粘贴旧的 .env&#10;DATABASE_URL=postgres://localhost/app&#10;DEBUG=false"></textarea>
+      </div>
+      <div class="pane">
+        <div class="label"><span>右侧（新 / 对比）</span><span id="countB">0 键</span></div>
+        <textarea id="right" spellcheck="false" placeholder="# 粘贴新的 .env&#10;DATABASE_URL=postgres://localhost/app&#10;DEBUG=true&#10;REDIS_URL=redis://localhost:6379"></textarea>
+      </div>
+    </div>
+
+    <div class="summary" id="summary" hidden></div>
+    <div class="results" id="results">
+      <div class="empty">在两侧粘贴内容后，差异会显示在这里。</div>
+    </div>
+
+    <footer>
+      开源仓库：<a href="https://github.com/temptation2017/env-diff">temptation2017/env-diff</a>
+      · MIT · 所有解析均在浏览器本地完成
+    </footer>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+    (function () {
+      const leftEl = document.getElementById("left");
+      const rightEl = document.getElementById("right");
+      const resultsEl = document.getElementById("results");
+      const summaryEl = document.getElementById("summary");
+      const toastEl = document.getElementById("toast");
+      const countA = document.getElementById("countA");
+      const countB = document.getElementById("countB");
+
+      const SAMPLE_LEFT = [
+        "# demo — fictional local values only",
+        "APP_NAME=DemoShop",
+        "DATABASE_URL=postgres://demo:demo@localhost:5432/shop",
+        "DEBUG=false",
+        "LOG_LEVEL=info",
+        "FEATURE_CHECKOUT=true",
+        "SMTP_HOST=mail.example.invalid",
+        "export MAX_UPLOAD_MB=10",
+      ].join("\n");
+
+      const SAMPLE_RIGHT = [
+        "# demo — fictional staging values only",
+        "APP_NAME=DemoShop",
+        "DATABASE_URL=postgres://demo:demo@db.internal:5432/shop",
+        "DEBUG=true",
+        "LOG_LEVEL=debug",
+        "FEATURE_CHECKOUT=true",
+        "FEATURE_WISHLIST=true",
+        "REDIS_URL=redis://cache.internal:6379/0",
+        "MAX_UPLOAD_MB=25",
+      ].join("\n");
+
+      function opts() {
+        return {
+          ignoreComments: document.getElementById("optComments").checked,
+          ignoreEmpty: document.getElementById("optEmpty").checked,
+          stripExport: document.getElementById("optExport").checked,
+          caseSensitive: document.getElementById("optCase").checked,
+          hideValues: document.getElementById("optHide").checked,
+        };
+      }
+
+      function parseEnv(text, o) {
+        const map = new Map();
+        const lines = String(text || "").split(/\r?\n/);
+        for (let raw of lines) {
+          let line = raw;
+          if (o.ignoreEmpty && !line.trim()) continue;
+          const trimmed = line.trim();
+          if (o.ignoreComments && trimmed.startsWith("#")) continue;
+          if (!trimmed) continue;
+
+          let body = trimmed;
+          if (o.stripExport && /^export\s+/i.test(body)) {
+            body = body.replace(/^export\s+/i, "");
+          }
+
+          const eq = body.indexOf("=");
+          if (eq <= 0) continue;
+          let key = body.slice(0, eq).trim();
+          let val = body.slice(eq + 1);
+          if (!key || /\s/.test(key)) continue;
+
+          if (
+            (val.startsWith('"') && val.endsWith('"')) ||
+            (val.startsWith("'") && val.endsWith("'"))
+          ) {
+            val = val.slice(1, -1);
+          }
+
+          const storeKey = o.caseSensitive ? key : key.toUpperCase();
+          map.set(storeKey, { key, val });
+        }
+        return { map };
+      }
+
+      function mask(val, hide) {
+        if (!hide) return val;
+        if (!val) return "";
+        if (val.length <= 4) return "****";
+        return val.slice(0, 2) + "…" + val.slice(-2);
+      }
+
+      function diff() {
+        const o = opts();
+        const a = parseEnv(leftEl.value, o);
+        const b = parseEnv(rightEl.value, o);
+        countA.textContent = a.map.size + " 键";
+        countB.textContent = b.map.size + " 键";
+
+        const keys = new Set([...a.map.keys(), ...b.map.keys()]);
+        const rows = [];
+        for (const k of keys) {
+          const L = a.map.get(k);
+          const R = b.map.get(k);
+          if (L && !R) {
+            rows.push({ kind: "del", key: L.key, left: L.val, right: "" });
+          } else if (!L && R) {
+            rows.push({ kind: "add", key: R.key, left: "", right: R.val });
+          } else if (L.val !== R.val) {
+            rows.push({ kind: "chg", key: R.key || L.key, left: L.val, right: R.val });
+          } else {
+            rows.push({ kind: "same", key: L.key, left: L.val, right: R.val });
+          }
+        }
+
+        const rank = { del: 0, add: 1, chg: 2, same: 3 };
+        rows.sort((x, y) => rank[x.kind] - rank[y.kind] || x.key.localeCompare(y.key));
+        return { rows, o };
+      }
+
+      function render() {
+        const { rows, o } = diff();
+        const counts = { add: 0, del: 0, chg: 0, same: 0 };
+        for (const r of rows) counts[r.kind]++;
+
+        if (!leftEl.value.trim() && !rightEl.value.trim()) {
+          summaryEl.hidden = true;
+          resultsEl.innerHTML = '<div class="empty">在两侧粘贴内容后，差异会显示在这里。</div>';
+          return;
+        }
+
+        summaryEl.hidden = false;
+        summaryEl.innerHTML =
+          '<span class="chip add">+ 新增 ' + counts.add + "</span>" +
+          '<span class="chip del">− 删除 ' + counts.del + "</span>" +
+          '<span class="chip chg">~ 变更 ' + counts.chg + "</span>" +
+          '<span class="chip same">= 相同 ' + counts.same + "</span>";
+
+        if (!rows.length) {
+          resultsEl.innerHTML = '<div class="empty">没有解析到有效的 KEY=VALUE 行。</div>';
+          return;
+        }
+
+        const label = { add: "新增", del: "删除", chg: "变更", same: "相同" };
+        let html = "<table><thead><tr><th>状态</th><th>键</th><th>左侧</th><th>右侧</th></tr></thead><tbody>";
+        for (const r of rows) {
+          html +=
+            "<tr>" +
+            '<td><span class="tag ' + r.kind + '">' + label[r.kind] + "</span></td>" +
+            '<td class="key">' + escapeHtml(r.key) + "</td>" +
+            '<td class="val">' + escapeHtml(mask(r.left, o.hideValues)) + "</td>" +
+            '<td class="val">' + escapeHtml(mask(r.right, o.hideValues)) + "</td>" +
+            "</tr>";
+        }
+        html += "</tbody></table>";
+        resultsEl.innerHTML = html;
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function toMarkdown() {
+        const { rows, o } = diff();
+        const lines = ["# env-diff 报告", "", "| 状态 | 键 | 左侧 | 右侧 |", "| --- | --- | --- | --- |"];
+        const label = { add: "新增", del: "删除", chg: "变更", same: "相同" };
+        for (const r of rows) {
+          if (r.kind === "same") continue;
+          lines.push(
+            "| " +
+              label[r.kind] +
+              " | `" +
+              r.key.replace(/`/g, "") +
+              "` | `" +
+              mask(r.left, o.hideValues).replace(/`/g, "") +
+              "` | `" +
+              mask(r.right, o.hideValues).replace(/`/g, "") +
+              "` |"
+          );
+        }
+        if (lines.length === 4) lines.push("| （无差异） |  |  |  |");
+        lines.push("", "_由 [env-diff](https://github.com/temptation2017/env-diff) 本地生成_");
+        return lines.join("\n");
+      }
+
+      function toast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add("show");
+        clearTimeout(toastEl._t);
+        toastEl._t = setTimeout(function () {
+          toastEl.classList.remove("show");
+        }, 1600);
+      }
+
+      document.getElementById("btnSample").addEventListener("click", function () {
+        leftEl.value = SAMPLE_LEFT;
+        rightEl.value = SAMPLE_RIGHT;
+        render();
+      });
+      document.getElementById("btnSwap").addEventListener("click", function () {
+        const t = leftEl.value;
+        leftEl.value = rightEl.value;
+        rightEl.value = t;
+        render();
+      });
+      document.getElementById("btnClear").addEventListener("click", function () {
+        leftEl.value = "";
+        rightEl.value = "";
+        render();
+      });
+      document.getElementById("btnCopy").addEventListener("click", async function () {
+        const md = toMarkdown();
+        try {
+          await navigator.clipboard.writeText(md);
+          toast("已复制 Markdown 报告");
+        } catch (e) {
+          const ta = document.createElement("textarea");
+          ta.value = md;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+          toast("已复制 Markdown 报告");
+        }
+      });
+
+      ["optComments", "optEmpty", "optExport", "optCase", "optHide"].forEach(function (id) {
+        document.getElementById(id).addEventListener("change", render);
+      });
+      leftEl.addEventListener("input", render);
+      rightEl.addEventListener("input", render);
+
+      render();
+    })();
+  </script>
+</body>
+</html>
